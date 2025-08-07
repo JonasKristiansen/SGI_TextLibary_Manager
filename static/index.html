@@ -3,106 +3,130 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Chat • SAP AI Deployment</title>
+    <title>Text Library Checker • SAP AI Core</title>
+    <script type="module">
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents@1/dist/Assets.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Title.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/TextArea.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Button.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/BusyIndicator.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/List.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/StandardListItem.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents-fiori@1/dist/Bar.js";
+    </script>
     <style>
       :root { color-scheme: light dark; }
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; display: grid; grid-template-rows: 1fr auto; height: 100dvh; }
-      header { padding: 12px 16px; border-bottom: 1px solid #ddd; font-weight: 600; }
-      #chat { padding: 16px; overflow: auto; }
-      #similar { border-top: 1px solid #ddd; padding: 10px 16px; background: #fafafa; }
-      #similar h3 { margin: 6px 0 8px; font-size: 14px; }
-      #sim { margin: 0; padding-left: 18px; }
-      .msg { max-width: 800px; margin: 6px 0; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; }
-      .user { background: #e8f0fe; margin-left: auto; }
-      .bot { background: #f1f3f4; margin-right: auto; }
-      form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #ddd; }
-      textarea { flex: 1; resize: vertical; min-height: 44px; max-height: 160px; padding: 10px; }
-      button { padding: 10px 14px; }
-      .hint { color: #777; font-size: 12px; padding-left: 4px; }
+      body { margin: 0; font-family: var(--sapFontFamily, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif); }
+      ui5-bar { position: sticky; top: 0; z-index: 2; }
+      .container { padding: 16px; max-width: 1000px; margin: 0 auto; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+      @media (min-width: 960px){ .grid { grid-template-columns: 1fr 1fr; } }
+      .section { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+      .row { display: flex; gap: 8px; align-items: flex-start; }
+      ui5-textarea { flex: 1; }
+      .muted { color: #6b6b6b; font-size: 12px; }
+      pre { white-space: pre-wrap; margin: 0; }
     </style>
   </head>
   <body>
-    <header>Chat • SAP AI Deployment</header>
-    <main id="chat"></main>
-    <aside id="similar">
-      <h3>Similar candidates (top 10)</h3>
-      <ol id="sim"></ol>
-      <div class="hint">Shown before sending the message to the model.</div>
-    </aside>
-    <form id="f">
-      <textarea id="t" placeholder="Type a message and press Enter…"></textarea>
-      <button type="submit">Send</button>
-    </form>
-    <script>
-      const chat = document.getElementById('chat');
-      const form = document.getElementById('f');
-      const t = document.getElementById('t');
-      const simList = document.getElementById('sim');
+    <ui5-bar design="Header">
+      <ui5-title level="H5" slot="startContent">Text Library Checker</ui5-title>
+    </ui5-bar>
 
-      function add(role, text){
-        const div = document.createElement('div');
-        div.className = `msg ${role==='user' ? 'user':'bot'}`;
-        div.textContent = text;
-        chat.appendChild(div);
-        chat.scrollTop = chat.scrollHeight;
-      }
+    <div class="container">
+      <div class="section">
+        <div class="row">
+          <ui5-textarea id="input" placeholder="Enter text, e.g., Use damp cloth" rows="3"></ui5-textarea>
+          <ui5-button id="check" design="Emphasized">Check</ui5-button>
+        </div>
+        <div style="margin-top:8px" class="muted">The app searches your library for similar entries and asks the deployed model on SAP AI Launchpad / AI Core to rank the top 3 matches.</div>
+      </div>
 
-      async function send(message){
-        add('user', message);
-        t.value = '';
-        // 1) find similar library entries
-        const sim = await fetch('/api/similar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({query: message, limit: 10})});
-        let similarTexts = [];
-        if (sim.ok){
-          const arr = await sim.json();
-          // render list in the UI
-          simList.innerHTML = '';
-          arr.forEach((x, idx)=>{
-            const li = document.createElement('li');
-            li.textContent = `[${x.id}] ${x.text}`;
-            simList.appendChild(li);
-          });
-          similarTexts = arr.map((x, idx) => `${idx+1}. [${x.id}] ${x.text}`).join('\n');
-        }
-        // 2) build an instruction to check for duplicates and rank top 3
-        const instruction = similarTexts ? `You are given a user intent and a candidate list of existing texts.\n\nUser intent:\n${message}\n\nCandidates (with IDs):\n${similarTexts}\n\nTask: Select up to the top 3 candidates that best match the intent in meaning.\nReturn ONLY a numbered list 1-3 in this exact format: \n1. [<ID>] <text> — short reason\n2. [<ID>] <text> — short reason\n3. [<ID>] <text> — short reason\nIf none are good, return exactly: No exact match.\nKeep total under 60 words.` : message;
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: instruction })
-        });
-        if(!res.ok){
-          const err = await res.text();
-          add('bot', `Error ${res.status}: ${err}`);
-          return;
-        }
-        const payload = await res.json();
-        // Try to pick assistant text from various provider response shapes
-        let text = '';
+      <div class="grid">
+        <div class="section">
+          <ui5-title level="H6">Similar candidates</ui5-title>
+          <ui5-busy-indicator id="busySim" size="Small">
+            <ui5-list id="simList"></ui5-list>
+          </ui5-busy-indicator>
+        </div>
+        <div class="section">
+          <ui5-title level="H6">Model judgment (top 3)</ui5-title>
+          <ui5-busy-indicator id="busyJudgment" size="Small">
+            <pre id="judgment" class="muted">No results yet.</pre>
+          </ui5-busy-indicator>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const input = $('input');
+      const btn = $('check');
+      const simList = $('simList');
+      const busySim = $('busySim');
+      const busyJudgment = $('busyJudgment');
+      const judgment = $('judgment');
+
+      async function run(){
+        const text = input.value.trim();
+        if(!text) return;
+
+        // Reset
+        simList.innerHTML = '';
+        judgment.textContent = 'Waiting for model…';
+        btn.disabled = true;
+        busySim.active = true;
+        busyJudgment.active = true;
+
+        // 1) search candidates
+        let candidates = [];
         try {
-          if(payload?.content?.length && payload.content[0].text){
-            text = payload.content[0].text;
-          } else if(payload?.choices?.length){
-            const m = payload.choices[0].message || payload.choices[0].delta;
-            text = (m?.content) || JSON.stringify(payload);
+          const r = await fetch('/api/similar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query: text, limit: 10 }) });
+          if(r.ok){ candidates = await r.json(); }
+        } catch {}
+        // render
+        simList.innerHTML = '';
+        candidates.forEach((c)=>{
+          const li = document.createElement('ui5-li');
+          li.dataset.id = c.id;
+          li.textContent = `[${c.id}] ${c.text}`;
+          simList.appendChild(li);
+        });
+        busySim.active = false;
+
+        // 2) build model instruction and call model
+        const lines = candidates.map((x, i)=> `${i+1}. [${x.id}] ${x.text}`).join('\n');
+        const instruction = candidates.length ? `You are given a user intent and a candidate list of existing texts.\n\nUser intent:\n${text}\n\nCandidates (with IDs):\n${lines}\n\nTask: Select up to the top 3 candidates that best match the intent in meaning.\nReturn ONLY a numbered list 1-3 in this exact format: \n1. [<ID>] <text> — short reason\n2. [<ID>] <text> — short reason\n3. [<ID>] <text> — short reason\nIf none are good, return exactly: No exact match.\nKeep total under 60 words.` : text;
+        try {
+          const res = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: instruction }) });
+          let out = '';
+          if(res.ok){
+            const payload = await res.json();
+            if(payload?.content?.length && payload.content[0].text){
+              out = payload.content[0].text;
+            } else if(payload?.choices?.length){
+              const m = payload.choices[0].message || payload.choices[0].delta;
+              out = (m?.content) || JSON.stringify(payload);
+            } else {
+              out = JSON.stringify(payload);
+            }
           } else {
-            text = JSON.stringify(payload);
+            out = `Error ${res.status}: ${await res.text()}`;
           }
-        } catch(e){ text = JSON.stringify(payload); }
-        add('bot', text);
+          judgment.textContent = out;
+        } catch (e){
+          judgment.textContent = String(e);
+        } finally {
+          busyJudgment.active = false;
+          btn.disabled = false;
+        }
       }
 
-      form.addEventListener('submit', e => {
-        e.preventDefault();
-        const msg = t.value.trim();
-        if(msg) send(msg);
-      });
-
-      // Enter to send
-      t.addEventListener('keydown', (e)=>{
-        if(e.key === 'Enter' && !e.shiftKey){
+      btn.addEventListener('click', run);
+      input.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){
           e.preventDefault();
-          form.requestSubmit();
+          run();
         }
       });
     </script>
