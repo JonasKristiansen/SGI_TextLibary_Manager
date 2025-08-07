@@ -1,49 +1,34 @@
-## Simple caller for SAP AI Launchpad deployment
+## Text Library Checker (Node)
 
-This is a minimal Python script that obtains an OAuth token and sends a text prompt to a deployed model in SAP AI Launchpad / AI Core.
-
-### Prerequisites
-- Python 3.9+
-- A service key for your SAP AI Core (or Generative AI Hub) instance with client credentials
+Minimal Node.js app that:
+- Calls a deployed model on SAP AI Launchpad / SAP AI Core for judgments
+- Finds similar texts from a small CSV library and asks the model to rank top-3 possible matches
 
 ### Configure
-Create a `.env` file (or export env vars) using `.env.example` as a template.
-
-- `AICORE_BASE_URL`: e.g. `https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com`
-- `AICORE_DEPLOYMENT_ID`: e.g. `dd8d0dd3b220f91c`
-- `AICORE_AUTH_URL`: OAuth token URL from your service key (often `uaa.url + /oauth/token`)
-- `AICORE_CLIENT_ID` / `AICORE_CLIENT_SECRET`: from the service key
-- `AICORE_RESOURCE_GROUP`: your AI resource group (often `default`)
-- `MODEL_FORMAT`: `openai` (recommended) or `anthropic`
-
-### Install
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Create `.env` from `env.example` and set your SAP AI Core credentials and deployment:
+- `AICORE_BASE_URL` (e.g. `https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com`)
+- `AICORE_DEPLOYMENT_ID` (your deployment ID)
+- `AICORE_AUTH_URL` (UAA token URL: `<uaa.url>/oauth/token`)
+- `AICORE_CLIENT_ID` / `AICORE_CLIENT_SECRET`
+- `AICORE_RESOURCE_GROUP` (usually `default`)
+- `AICORE_INVOCATION_PATH` set to your deployment’s invoke path (e.g. `/v2/inference/deployments/<id>/invoke`)
+- `MODEL_FORMAT=anthropic` (for Bedrock Claude deployments)
 
 ### Run
-Send a quick prompt:
 ```bash
-python main.py --prompt "Say hello in one sentence"
+npm install
+npm start
+# open http://localhost:3000
 ```
 
-### Start the web chat UI
-```bash
-uvicorn server:app --reload --port 8000
-# then open http://localhost:8000 in your browser (served by FastAPI's static mount below if you add it)
-```
+### Endpoints
+- `POST /api/similar` → returns library candidates for a query (reads `library.csv`)
+- `POST /api/chat` → proxies the judgment to your SAP AI Core deployment
 
+### UI
+Static chat UI at `/`:
+- Shows top candidates found in the CSV library
+- Sends a concise instruction to the model to return a ranked top-3 (or “No exact match.”)
 
-The script will:
-- Fetch an access token
-- Try several common invocation paths for deployments
-- Print the response JSON or a clear error summary
-
-### Notes
-- If you know the exact invocation path for your deployment, set `AICORE_INVOCATION_PATH` to override the auto-try logic (e.g. `/v2/inference/deployments/{deploymentId}/invocations`).
-- If your setup expects OpenAI-compatible payloads, leave `MODEL_FORMAT=openai` (the script also sends the `AI-Model-Format: openai` header).
-- For provider-native payloads (e.g., Anthropic via Bedrock), set `MODEL_FORMAT=anthropic`.
-
+This app relies on your deployed model in SAP AI Launchpad / AI Core; no model weights are hosted here.
 
