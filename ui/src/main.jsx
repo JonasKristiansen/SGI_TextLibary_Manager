@@ -1,6 +1,6 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { ThemeProvider, Button, Title, BusyIndicator, List, Input } from '@ui5/webcomponents-react'
+import { ThemeProvider, Button, Title, BusyIndicator, Input } from '@ui5/webcomponents-react'
 // Register web component for list items directly (React wrapper changed in v2)
 import '@ui5/webcomponents/dist/ListItemStandard.js'
 
@@ -11,10 +11,18 @@ function App(){
   const [busySim, setBusySim] = React.useState(false)
   const [busyOut, setBusyOut] = React.useState(false)
   const [judgments, setJudgments] = React.useState([])
+  const [hasChecked, setHasChecked] = React.useState(false)
+
+  // Ensure IDs in judgments are displayed with the exact zero-padding used in the library list
+  const formatIdFromSim = React.useCallback((judgedId)=>{
+    const match = sim.find(s => Number(s.id) === Number(judgedId))
+    return match ? String(match.id) : String(judgedId)
+  }, [sim])
 
   async function run(){
     const text = value.trim()
     if(!text) return
+    setHasChecked(true)
     setSim([])
     setOut('Waiting for model…')
     setBusySim(true)
@@ -72,47 +80,71 @@ function App(){
           <Input value={value} onInput={(e)=>setValue(e.target.value)} placeholder="Enter text, e.g., Use damp cloth" style={{width:'100%'}}/>
           <Button design="Emphasized" onClick={run} style={{width:'100%'}}>Check</Button>
         </div>
+        {hasChecked && (
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:16, marginTop:16, width:'100%'}}>
           <div style={{border:'1px solid #ddd', borderRadius:8, padding:12, minWidth:0}}>
-            <Title level="H6">Similar candidates from Text Library</Title>
+            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:800, color:'#0a6ed1'}}>Similar candidates from Text Library</Title>
             <BusyIndicator active={busySim} size="Small">
               {sim.length ? (
-                <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8}}>
-                  {sim.map(s => (
-                    <div key={s.id} style={{border:'1px solid #e0e0e0', borderRadius:6, padding:8}}>
-                      <div style={{fontWeight:600, lineHeight:1.4, whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>
-                        [{s.id}] {s.text}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <table style={{width:'100%', borderCollapse:'collapse', tableLayout:'fixed'}}>
+                  <colgroup>
+                    <col style={{width:'110px'}} />
+                    <col />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>ID</th>
+                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>Text</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sim.map(s => (
+                      <tr key={s.id}>
+                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', fontWeight:600, fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'}}>{String(s.id)}</td>
+                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{s.text}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : (
                 <pre style={{whiteSpace:'pre-wrap', margin:0}}>No candidates</pre>
               )}
             </BusyIndicator>
           </div>
           <div style={{border:'1px solid #ddd', borderRadius:8, padding:12, minWidth:0}}>
-            <Title level="H6">Model judgment (top 3, sorted by ID)</Title>
+            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:800, color:'#0a6ed1'}}>Evaluation from SAP AI Core</Title>
             <BusyIndicator active={busyOut} size="Small">
               {judgments.length ? (
-                <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8}}>
-                  {judgments.map(j => (
-                    <div key={j.id} style={{border:'1px solid #e0e0e0', borderRadius:6, padding:8}}>
-                      <div style={{fontWeight:600, lineHeight:1.4, whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>
-                        [{j.id}] {j.text}
-                      </div>
-                      <div className="muted" style={{marginTop:4, whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>
-                        {j.reason}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <table style={{width:'100%', borderCollapse:'collapse', tableLayout:'fixed'}}>
+                  <colgroup>
+                    <col style={{width:'110px'}} />
+                    <col style={{width:'55%'}} />
+                    <col />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>ID</th>
+                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>Text</th>
+                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>LLM Response</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {judgments.map(j => (
+                      <tr key={j.id}>
+                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', fontWeight:600, fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'}}>{formatIdFromSim(j.id)}</td>
+                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{j.text}</td>
+                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', color:'#5f6b7a', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{j.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : (
                 <pre style={{whiteSpace:'pre-wrap', margin:0}}>{out}</pre>
               )}
             </BusyIndicator>
           </div>
         </div>
+        )}
       </div>
     </ThemeProvider>
   )
