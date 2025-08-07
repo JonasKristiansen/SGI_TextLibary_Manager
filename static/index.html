@@ -7,7 +7,7 @@
     <script type="module">
       import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents@1/dist/Assets.js";
       import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Title.js";
-      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/TextArea.js";
+      import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Input.js";
       import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Button.js";
       import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/BusyIndicator.js";
       import "https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/List.js";
@@ -23,7 +23,7 @@
       @media (min-width: 960px){ .grid { grid-template-columns: 1fr 1fr; } }
       .section { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
       .row { display: flex; gap: 8px; align-items: flex-start; }
-      ui5-textarea { flex: 1; }
+      ui5-input, ui5-textarea { flex: 1; width: 100%; }
       .muted { color: #6b6b6b; font-size: 12px; }
       pre { white-space: pre-wrap; margin: 0; }
     </style>
@@ -36,7 +36,7 @@
     <div class="container">
       <div class="section">
         <div class="row">
-          <ui5-textarea id="input" placeholder="Enter text, e.g., Use damp cloth" rows="3"></ui5-textarea>
+          <ui5-input id="input" placeholder="Enter text, e.g., Use damp cloth" clear-icon style="width:100%"></ui5-input>
           <ui5-button id="check" design="Emphasized">Check</ui5-button>
         </div>
         <div style="margin-top:8px" class="muted">The app searches your library for similar entries and asks the deployed model on SAP AI Launchpad / AI Core to rank the top 3 matches.</div>
@@ -68,7 +68,7 @@
       const judgment = $('judgment');
 
       async function run(){
-        const text = input.value.trim();
+        const text = (input.value || '').trim();
         if(!text) return;
 
         // Reset
@@ -124,7 +124,7 @@
 
       btn.addEventListener('click', run);
       input.addEventListener('keydown', (e)=>{
-        if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){
+        if(e.key === 'Enter'){
           e.preventDefault();
           run();
         }
