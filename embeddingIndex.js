@@ -10,8 +10,8 @@ async function initEmbedder() {
   if (!embedder) {
     console.log('Loading embedding model (this may take a moment on first run)...');
     try {
-      // Using all-MiniLM-L6-v2 - lightweight but effective for semantic similarity
-      embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+      // Using all-mpnet-base-v2 - better semantic understanding than MiniLM
+      embedder = await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2', {
         progress_callback: (progress) => {
           if (progress.status === 'downloading') {
             console.log(`Downloading model: ${Math.round(progress.progress || 0)}%`);
