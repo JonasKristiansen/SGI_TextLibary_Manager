@@ -38,12 +38,12 @@ function App(){
     setBusySim(true)
     setBusyOut(true)
     try{
-      const r = await fetch('/api/similar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({query:text, limit:10})})
+      const r = await fetch('/api/similar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({query:text, limit:100})})
       if(r.ok){
-        const list = (await r.json()).sort((a,b)=> Number(a.id) - Number(b.id))
+        const list = (await r.json())
         setSim(list)
         const lines = list.map((x,i)=> `${i+1}. [${x.id}] ${x.text}`).join('\n')
-        const instruction = list.length ? `SYSTEM: You are a matching engine. Do NOT answer the user intent. Only evaluate matches from the provided candidates.\n\nUser intent:\n${text}\n\nCandidates (with IDs):\n${lines}\n\nReturn ONLY a numbered list 1-3 in this exact format:\n1. [<ID>] <text> — short reason\n2. [<ID>] <text> — short reason\n3. [<ID>] <text> — short reason\nIf none are good, return exactly: No exact match.` : text
+        const instruction = list.length ? `SYSTEM: You are a matching engine. Do NOT answer the user intent. Only evaluate matches from the provided candidates.\n\nUser intent:\n${text}\n\nCandidates (with IDs):\n${lines}\n\nReturn ONLY a numbered list of the top 25 best matches in this exact format:\n1. [<ID>] <text> — short reason\n2. [<ID>] <text> — short reason\n...\n25. [<ID>] <text> — short reason\n\nIf fewer than 25 good matches exist, return only the good ones. If none are good, return exactly: No exact match.` : text
         await callModel(instruction)
         return
       }
@@ -67,7 +67,6 @@ function App(){
             if(m){ items.push({ id: Number(m[1]), text: m[2].trim(), reason: m[3].trim() }) }
           })
           if(items.length){
-            items.sort((a,b)=> a.id - b.id)
             setJudgments(items)
             setOut('')
           } else {
@@ -93,7 +92,7 @@ function App(){
         {/* Evaluation table at the top */}
         {hasChecked && (
           <div style={{minWidth:0, marginTop:16, backgroundColor:'#FFFFFF', padding:'16px', borderRadius:'8px', boxShadow:'0 1px 4px rgba(117, 140, 164, 0.15)'}}>
-            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Evaluation from SAP AI Core</Title>
+            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Best Matches</Title>
             {busyOut ? (
               <ui5-busy-indicator active={busyOut} size="M" text="Evaluating with SAP AI Core..." style={{display:'block', width:'100%', minHeight:'100px'}} />
             ) : (
@@ -103,7 +102,7 @@ function App(){
                     <ui5-table-header-row slot="headerRow">
                       <ui5-table-header-cell style={{width:'80px'}}>ID</ui5-table-header-cell>
                       <ui5-table-header-cell style={{width:'50%'}}>Text</ui5-table-header-cell>
-                      <ui5-table-header-cell style={{width:'50%'}}>LLM Response</ui5-table-header-cell>
+                      <ui5-table-header-cell style={{width:'50%'}}>Match Reason</ui5-table-header-cell>
                     </ui5-table-header-row>
                     {judgments.map((j) => (
                       <ui5-table-row key={j.id}>
@@ -128,40 +127,7 @@ function App(){
             )}
           </div>
         )}
-        {/* Similar candidates table below */}
-        {hasChecked && (
-          <div style={{minWidth:0, marginTop:16, backgroundColor:'#FFFFFF', padding:'16px', borderRadius:'8px', boxShadow:'0 1px 4px rgba(117, 140, 164, 0.15)'}}>
-            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Similar candidates from Text Library</Title>
-            {busySim ? (
-              <ui5-busy-indicator active={busySim} size="M" text="Searching text library..." style={{display:'block', width:'100%', minHeight:'100px'}} />
-            ) : (
-              <>
-                {sim.length ? (
-                  <ui5-table style={{width:'100%', backgroundColor:'#FFFFFF', tableLayout:'fixed'}} no-data-text="No candidates">
-                    <ui5-table-header-row slot="headerRow">
-                      <ui5-table-header-cell style={{width:'80px'}}>ID</ui5-table-header-cell>
-                      <ui5-table-header-cell style={{width:'50%'}}>Text</ui5-table-header-cell>
-                      <ui5-table-header-cell style={{width:'50%', visibility:'hidden'}}></ui5-table-header-cell>
-                    </ui5-table-header-row>
-                    {sim.map(s => (
-                      <ui5-table-row key={s.id}>
-                        <ui5-table-cell>
-                          <ui5-label style={{color:'#556B82', fontWeight:'600'}}>{String(s.id)}</ui5-label>
-                        </ui5-table-cell>
-                        <ui5-table-cell style={{whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere', color:'#131E29'}}>
-                          {s.text}
-                        </ui5-table-cell>
-                        <ui5-table-cell style={{visibility:'hidden'}}></ui5-table-cell>
-                      </ui5-table-row>
-                    ))}
-                  </ui5-table>
-                ) : (
-                  <div>No candidates</div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+
       </div>
     </ThemeProvider>
   )

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import { callModel } from './aicoreClient.js';
-import { loadLibraryCsv } from './libraryIndex.js';
+import { loadLibraryEmbeddings } from './embeddingIndex.js';
 
 dotenv.config();
 
@@ -16,7 +16,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const index = loadLibraryCsv(path.join(__dirname, 'library.csv'));
+// Initialize the embedding index (async)
+let index = null;
+console.log('Initializing embedding index...');
+loadLibraryEmbeddings(path.join(__dirname, 'library.csv')).then(embeddingIndex => {
+  index = embeddingIndex;
+  console.log(`Embedding index ready with ${embeddingIndex.docs} documents`);
+}).catch(error => {
+  console.error('Failed to initialize embedding index:', error);
+  process.exit(1);
+});
 
 app.post('/api/chat', async (req, res) => {
   try {
@@ -28,10 +37,19 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-app.post('/api/similar', (req, res) => {
-  const { query, limit = 25 } = req.body || {};
-  const results = index.search(query, limit);
-  res.json(results);
+app.post('/api/similar', async (req, res) => {
+  try {
+    if (!index) {
+      return res.status(503).json({ error: 'Embedding index not ready yet. Please wait a moment and try again.' });
+    }
+    
+    const { query, limit = 25 } = req.body || {};
+    const results = await index.search(query, limit);
+    res.json(results);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Search failed: ' + error.message });
+  }
 });
 
 app.use('/', express.static(path.join(__dirname, 'static')));
