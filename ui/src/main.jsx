@@ -1,8 +1,17 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeProvider, Button, Title, BusyIndicator, Input } from '@ui5/webcomponents-react'
-// Register web component for list items directly (React wrapper changed in v2)
-import '@ui5/webcomponents/dist/ListItemStandard.js'
+// Ensure UI5 themes & typography are loaded
+import '@ui5/webcomponents/dist/Assets.js'
+import '@ui5/webcomponents-fiori/dist/Assets.js'
+// UI5 Table components - following documentation example
+import '@ui5/webcomponents/dist/Table.js'
+import '@ui5/webcomponents/dist/TableHeaderRow.js'
+import '@ui5/webcomponents/dist/TableHeaderCell.js'
+import '@ui5/webcomponents/dist/TableRow.js'
+import '@ui5/webcomponents/dist/TableCell.js'
+import '@ui5/webcomponents/dist/Label.js'
+import '@ui5/webcomponents/dist/BusyIndicator.js'
 
 function App(){
   const [value, setValue] = React.useState('')
@@ -24,7 +33,8 @@ function App(){
     if(!text) return
     setHasChecked(true)
     setSim([])
-    setOut('Waiting for model…')
+    setOut('')
+    setJudgments([])
     setBusySim(true)
     setBusyOut(true)
     try{
@@ -75,75 +85,82 @@ function App(){
 
   return (
     <ThemeProvider>
-      <div style={{padding:'16px 16px', width:'100%', margin:'0', boxSizing:'border-box'}}>
-        <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8}}>
+      <div style={{padding:'16px 16px', width:'100%', margin:'0', boxSizing:'border-box', backgroundColor:'#F5F6F7', minHeight:'100vh'}}>
+        <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8, marginBottom:16}}>
           <Input value={value} onInput={(e)=>setValue(e.target.value)} placeholder="Enter text, e.g., Use damp cloth" style={{width:'100%'}}/>
-          <Button design="Emphasized" onClick={run} style={{width:'100%'}}>Check</Button>
+          <Button design="Emphasized" onClick={run} style={{width:'100%', backgroundColor:'#0070F2', color:'white'}}>Check</Button>
         </div>
+        {/* Evaluation table at the top */}
         {hasChecked && (
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:16, marginTop:16, width:'100%'}}>
-          <div style={{border:'1px solid #ddd', borderRadius:8, padding:12, minWidth:0}}>
-            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:800, color:'#0a6ed1'}}>Similar candidates from Text Library</Title>
-            <BusyIndicator active={busySim} size="Small">
-              {sim.length ? (
-                <table style={{width:'100%', borderCollapse:'collapse', tableLayout:'fixed'}}>
-                  <colgroup>
-                    <col style={{width:'110px'}} />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>ID</th>
-                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>Text</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+          <div style={{minWidth:0, marginTop:16, backgroundColor:'#FFFFFF', padding:'16px', borderRadius:'8px', boxShadow:'0 1px 4px rgba(117, 140, 164, 0.15)'}}>
+            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Evaluation from SAP AI Core</Title>
+            {busyOut ? (
+              <ui5-busy-indicator active={busyOut} size="M" text="Evaluating with SAP AI Core..." style={{display:'block', width:'100%', minHeight:'100px'}} />
+            ) : (
+              <>
+                {judgments.length ? (
+                  <ui5-table style={{width:'100%', backgroundColor:'#FFFFFF', tableLayout:'fixed'}} no-data-text="No results">
+                    <ui5-table-header-row slot="headerRow">
+                      <ui5-table-header-cell style={{width:'80px'}}>ID</ui5-table-header-cell>
+                      <ui5-table-header-cell style={{width:'50%'}}>Text</ui5-table-header-cell>
+                      <ui5-table-header-cell style={{width:'50%'}}>LLM Response</ui5-table-header-cell>
+                    </ui5-table-header-row>
+                    {judgments.map((j) => (
+                      <ui5-table-row key={j.id}>
+                        <ui5-table-cell>
+                          <ui5-label style={{color:'#556B82', fontWeight:'600'}}>{formatIdFromSim(j.id)}</ui5-label>
+                        </ui5-table-cell>
+                        <ui5-table-cell style={{whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere', color:'#131E29'}}>
+                          {j.text}
+                        </ui5-table-cell>
+                        <ui5-table-cell style={{whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere', color:'#556B82'}}>
+                          {j.reason}
+                        </ui5-table-cell>
+                      </ui5-table-row>
+                    ))}
+                  </ui5-table>
+                ) : out ? (
+                  <div>{out}</div>
+                ) : (
+                  <div>No results yet.</div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {/* Similar candidates table below */}
+        {hasChecked && (
+          <div style={{minWidth:0, marginTop:16, backgroundColor:'#FFFFFF', padding:'16px', borderRadius:'8px', boxShadow:'0 1px 4px rgba(117, 140, 164, 0.15)'}}>
+            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Similar candidates from Text Library</Title>
+            {busySim ? (
+              <ui5-busy-indicator active={busySim} size="M" text="Searching text library..." style={{display:'block', width:'100%', minHeight:'100px'}} />
+            ) : (
+              <>
+                {sim.length ? (
+                  <ui5-table style={{width:'100%', backgroundColor:'#FFFFFF', tableLayout:'fixed'}} no-data-text="No candidates">
+                    <ui5-table-header-row slot="headerRow">
+                      <ui5-table-header-cell style={{width:'80px'}}>ID</ui5-table-header-cell>
+                      <ui5-table-header-cell style={{width:'50%'}}>Text</ui5-table-header-cell>
+                      <ui5-table-header-cell style={{width:'50%', visibility:'hidden'}}></ui5-table-header-cell>
+                    </ui5-table-header-row>
                     {sim.map(s => (
-                      <tr key={s.id}>
-                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', fontWeight:600, fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'}}>{String(s.id)}</td>
-                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{s.text}</td>
-                      </tr>
+                      <ui5-table-row key={s.id}>
+                        <ui5-table-cell>
+                          <ui5-label style={{color:'#556B82', fontWeight:'600'}}>{String(s.id)}</ui5-label>
+                        </ui5-table-cell>
+                        <ui5-table-cell style={{whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere', color:'#131E29'}}>
+                          {s.text}
+                        </ui5-table-cell>
+                        <ui5-table-cell style={{visibility:'hidden'}}></ui5-table-cell>
+                      </ui5-table-row>
                     ))}
-                  </tbody>
-                </table>
-              ) : (
-                <pre style={{whiteSpace:'pre-wrap', margin:0}}>No candidates</pre>
-              )}
-            </BusyIndicator>
+                  </ui5-table>
+                ) : (
+                  <div>No candidates</div>
+                )}
+              </>
+            )}
           </div>
-          <div style={{border:'1px solid #ddd', borderRadius:8, padding:12, minWidth:0}}>
-            <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:800, color:'#0a6ed1'}}>Evaluation from SAP AI Core</Title>
-            <BusyIndicator active={busyOut} size="Small">
-              {judgments.length ? (
-                <table style={{width:'100%', borderCollapse:'collapse', tableLayout:'fixed'}}>
-                  <colgroup>
-                    <col style={{width:'110px'}} />
-                    <col style={{width:'55%'}} />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>ID</th>
-                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>Text</th>
-                      <th style={{textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #e0e0e0'}}>LLM Response</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {judgments.map(j => (
-                      <tr key={j.id}>
-                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', fontWeight:600, fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'}}>{formatIdFromSim(j.id)}</td>
-                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{j.text}</td>
-                        <td style={{verticalAlign:'top', padding:'8px', borderBottom:'1px solid #f0f0f0', color:'#5f6b7a', whiteSpace:'pre-wrap', wordBreak:'break-word', overflowWrap:'anywhere'}}>{j.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <pre style={{whiteSpace:'pre-wrap', margin:0}}>{out}</pre>
-              )}
-            </BusyIndicator>
-          </div>
-        </div>
         )}
       </div>
     </ThemeProvider>
