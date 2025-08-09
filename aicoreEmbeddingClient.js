@@ -10,13 +10,13 @@ const __dirname = path.dirname(__filename);
 // Load .env file
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Use hardcoded credentials due to dotenv issue with $ in secret
+// Configuration with proper environment variable reading
 const cfg = {
   baseUrl: process.env.AICORE_BASE_URL || 'https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com',
   embeddingDeploymentId: process.env.AICORE_EMBEDDING_DEPLOYMENT_ID || 'da8459b6a7af1825',
   resourceGroup: process.env.AICORE_RESOURCE_GROUP || 'default',
-  clientId: process.env.AICORE_CLIENT_ID || 'sb-c26950b9-d78a-4dd3-b7fb-c2f822c67e64!b485014|aicore!b540',
-  clientSecret: process.env.AICORE_CLIENT_SECRET || 'c6e2d6d5-40f5-4230-88a8-b2a4da95db8d$$V64nn5BG3xlnCBQcjVlNF5xPr4Q6NFkyf3iJcpplGBc=',  // Read from env or use fallback
+  clientId: process.env.AICORE_CLIENT_ID || 'sb-c26950b9-d78a-4dd3-b7fb-c2f822c67e641b4850',
+  clientSecret: process.env.AICORE_CLIENT_SECRET || 'c6e2d6d5-40f5-4230-88a8-b2a4da95db8d$V4t',
   authUrl: process.env.AICORE_AUTH_URL || 'https://btp-dev-ioch0ul7.authentication.eu10.hana.ondemand.com/oauth/token',
 };
 
