@@ -64,7 +64,11 @@ function App(){
           const items = []
           o.split(/\n+/).forEach(line=>{
             const m = line.match(/^\s*\d+\.\s*\[(\d+)\]\s*(.*?)\s*[—-]\s*(.*)\s*$/)
-            if(m){ items.push({ id: Number(m[1]), text: m[2].trim(), reason: m[3].trim() }) }
+            if(m){ 
+              const reason = m[3].trim()
+              const capitalizedReason = reason.charAt(0).toUpperCase() + reason.slice(1)
+              items.push({ id: Number(m[1]), text: m[2].trim(), reason: capitalizedReason }) 
+            }
           })
           if(items.length){
             setJudgments(items)
@@ -94,7 +98,7 @@ function App(){
           <div style={{minWidth:0, marginTop:16, backgroundColor:'#FFFFFF', padding:'16px', borderRadius:'8px', boxShadow:'0 1px 4px rgba(117, 140, 164, 0.15)'}}>
             <Title level="H5" style={{margin:'0 0 10px 0', fontWeight:600, color:'#131E29'}}>Best Matches</Title>
             {busyOut ? (
-              <ui5-busy-indicator active={busyOut} size="M" text="Evaluating with SAP AI Core..." style={{display:'block', width:'100%', minHeight:'100px'}} />
+              <ui5-busy-indicator active={busyOut} size="M" text="Evaluating texts with SAP AI Core" style={{display:'block', width:'100%', minHeight:'100px'}} />
             ) : (
               <>
                 {judgments.length ? (

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import { callModel } from './aicoreClient.js';
-import { loadLibraryEmbeddings } from './embeddingIndex.js';
+import { DatabaseClient } from './databaseClient.js';
 
 dotenv.config();
 
@@ -16,17 +16,39 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize the embedding index (async)
-let index = null;
-console.log('Initializing AI Core embedding index...');
-loadLibraryEmbeddings(path.join(__dirname, 'library_with_embeddings.csv')).then(embeddingIndex => {
-  index = embeddingIndex;
-  console.log(`AI Core embedding index ready with ${embeddingIndex.docs} documents`);
-  console.log(`Using model: ${embeddingIndex.model} (${embeddingIndex.dimensions} dimensions)`);
-}).catch(error => {
-  console.error('Failed to initialize embedding index:', error);
-  console.warn('Server will continue running without embedding functionality. Please check your AI Core configuration.');
-});
+// Initialize the database client (async)
+let dbClient = null;
+const databaseUrl = process.env.DATABASE_URL;
+
+if (databaseUrl) {
+  console.log('Initializing PostgreSQL database connection...');
+  dbClient = new DatabaseClient(databaseUrl);
+  
+  dbClient.initialize()
+    .then(() => dbClient.getStats())
+    .then(stats => {
+      console.log(`✅ Database ready with ${stats.docs} documents`);
+      console.log(`📊 Embeddings: ${stats.embeddings}, Missing: ${stats.missing}`);
+      console.log(`🤖 Using model: ${stats.model} (${stats.dimensions} dimensions)`);
+      
+      // Generate missing embeddings if needed
+      if (stats.missing > 0) {
+        console.log(`🔄 Generating ${stats.missing} missing embeddings in background...`);
+        dbClient.generateMissingEmbeddings().catch(error => {
+          console.error('Background embedding generation failed:', error);
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Failed to initialize database:', error);
+      console.warn('Server will continue running without database functionality.');
+      console.warn('Please check your DATABASE_URL and database configuration.');
+      dbClient = null;
+    });
+} else {
+  console.warn('DATABASE_URL not found. Running without database functionality.');
+  console.warn('Set DATABASE_URL environment variable to enable embedding search.');
+}
 
 app.post('/api/chat', async (req, res) => {
   try {
@@ -40,12 +62,12 @@ app.post('/api/chat', async (req, res) => {
 
 app.post('/api/similar', async (req, res) => {
   try {
-    if (!index) {
-      return res.status(503).json({ error: 'Embedding index not ready yet. Please wait a moment and try again.' });
+    if (!dbClient) {
+      return res.status(503).json({ error: 'Database not ready yet. Please wait a moment and try again.' });
     }
     
     const { query, limit = 25 } = req.body || {};
-    const results = await index.search(query, limit);
+    const results = await dbClient.search(query, limit);
     res.json(results);
   } catch (error) {
     console.error('Search error:', error);
