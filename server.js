@@ -19,7 +19,7 @@ app.use(express.json());
 // Initialize the embedding index (async)
 let index = null;
 console.log('Initializing AI Core embedding index...');
-loadLibraryEmbeddings(path.join(__dirname, 'library.csv')).then(embeddingIndex => {
+loadLibraryEmbeddings(path.join(__dirname, 'library_with_embeddings.csv')).then(embeddingIndex => {
   index = embeddingIndex;
   console.log(`AI Core embedding index ready with ${embeddingIndex.docs} documents`);
   console.log(`Using model: ${embeddingIndex.model} (${embeddingIndex.dimensions} dimensions)`);

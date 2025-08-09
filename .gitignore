@@ -5,8 +5,7 @@ node_modules/
 *.log
 
 # Data files
-library.csv
-library_embeddings.json
+library_with_embeddings.csv
 
 # Build artifacts
 ui/dist/

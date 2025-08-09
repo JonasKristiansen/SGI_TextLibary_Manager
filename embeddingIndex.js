@@ -21,93 +21,182 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Load library CSV and create embeddings index using AI Core
+// Parse a CSV row with proper quote handling
+function parseCSVRow(row) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
+  
+  while (i < row.length) {
+    const char = row[i];
+    const nextChar = row[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        // Escaped quote inside quoted field
+        current += '"';
+        i += 2;
+      } else {
+        // Start or end of quoted field
+        inQuotes = !inQuotes;
+        i++;
+      }
+    } else if (char === ',' && !inQuotes) {
+      // Field separator
+      result.push(current);
+      current = '';
+      i++;
+    } else {
+      current += char;
+      i++;
+    }
+  }
+  
+  // Add the last field
+  result.push(current);
+  return result;
+}
+
+// Convert CSV line to proper format for writing
+function formatCSVRow(id, text, embedding) {
+  // Escape text field
+  const escapedText = '"' + text.replace(/"/g, '""') + '"';
+  
+  // Format embedding
+  let embeddingStr = '""'; // Empty by default
+  if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+    embeddingStr = '"' + JSON.stringify(embedding).replace(/"/g, '""') + '"';
+  }
+  
+  return `${id},${escapedText},${embeddingStr}`;
+}
+
+// Load library CSV with embeddings and generate missing ones incrementally
 export async function loadLibraryEmbeddings(csvPath) {
-  const embedCachePath = csvPath.replace('.csv', '_embeddings.json');
+  console.log(`Loading library from: ${csvPath}`);
+  
+  // Check if file exists
+  if (!fs.existsSync(csvPath)) {
+    throw new Error(`Library file not found: ${csvPath}`);
+  }
   
   // Load CSV data
   const buf = fs.readFileSync(csvPath, 'utf8');
   const lines = buf.split(/\r?\n/).filter(Boolean);
-  const header = lines.shift();
+  const header = lines.shift(); // Remove header
+  
+  // Check if this is the new 3-column format
+  const hasEmbeddingColumn = header.includes('embedding');
+  
+  if (!hasEmbeddingColumn) {
+    throw new Error('CSV file must have "id,text,embedding" format. Please use the migration script first.');
+  }
   
   const docs = [];
-  for (const line of lines) {
-    const [id, text] = line.split(/,(.*)/s).slice(0, 2);
-    if (!text) continue;
-    docs.push({ 
-      id: id || String(docs.length + 1), 
-      text: text.trim() 
-    });
+  const embeddings = [];
+  const textsNeedingEmbeddings = [];
+  const indicesNeedingEmbeddings = [];
+  
+  console.log('Parsing CSV data...');
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    
+    try {
+      const [id, text, embeddingStr] = parseCSVRow(line);
+      
+      if (!text) {
+        console.warn(`Skipping row ${i + 2}: missing text`);
+        continue;
+      }
+      
+      const doc = { 
+        id: id || String(docs.length + 1), 
+        text: text.trim() 
+      };
+      docs.push(doc);
+      
+      // Check if embedding exists and is valid
+      let embedding = null;
+      if (embeddingStr && embeddingStr.trim() && embeddingStr !== '""') {
+        try {
+          embedding = JSON.parse(embeddingStr);
+          if (!Array.isArray(embedding) || embedding.length === 0) {
+            embedding = null;
+          }
+        } catch (error) {
+          console.warn(`Invalid embedding format for row ${i + 2}, will regenerate`);
+          embedding = null;
+        }
+      }
+      
+      if (embedding) {
+        embeddings.push(embedding);
+      } else {
+        // This text needs an embedding
+        textsNeedingEmbeddings.push(doc.text);
+        indicesNeedingEmbeddings.push(docs.length - 1);
+        embeddings.push(null); // Placeholder
+      }
+    } catch (error) {
+      console.warn(`Failed to parse row ${i + 2}: ${error.message}`);
+    }
   }
   
   console.log(`Loaded ${docs.length} documents from CSV`);
+  console.log(`Found ${embeddings.filter(e => e !== null).length} existing embeddings`);
+  console.log(`Need to generate ${textsNeedingEmbeddings.length} new embeddings`);
   
-  // Try to load cached embeddings
-  let embeddings = null;
-  let needsRecompute = true;
-  
-  if (fs.existsSync(embedCachePath)) {
-    try {
-      const cached = JSON.parse(fs.readFileSync(embedCachePath, 'utf8'));
-      if (cached.docs && cached.embeddings && cached.docs.length === docs.length) {
-        // Check if docs are the same and model version matches
-        const sameData = docs.slice(0, 5).every((doc, i) => 
-          cached.docs[i] && cached.docs[i].id === doc.id && cached.docs[i].text === doc.text
-        );
-        
-        // Check model version (text-embedding-3-small)
-        const correctModel = cached.model === 'text-embedding-3-small';
-        
-        if (sameData && correctModel) {
-          embeddings = cached.embeddings;
-          needsRecompute = false;
-          console.log('Loaded cached AI Core embeddings');
-        } else if (!correctModel) {
-          console.log('Cached embeddings use different model, will recompute');
-        }
-      }
-    } catch (error) {
-      console.log('Failed to load cached embeddings, will recompute');
-    }
-  }
-  
-  // Compute embeddings if needed using AI Core
-  if (needsRecompute) {
-    console.log('Computing embeddings using SAP AI Core...');
-    console.log('This may take a few minutes for large libraries.');
+  // Generate missing embeddings if needed
+  if (textsNeedingEmbeddings.length > 0) {
+    console.log('Generating missing embeddings using SAP AI Core...');
+    console.log('This may take a few minutes for large numbers of missing embeddings.');
     
     try {
-      // Extract all texts for batch processing
-      const texts = docs.map(doc => doc.text);
-      
-      // Generate embeddings in batches
-      // Using defaults from aicoreEmbeddingClient.js for proper rate limiting
-      embeddings = await generateBatchEmbeddings(texts);
+      // Generate embeddings for texts that don't have them
+      const newEmbeddings = await generateBatchEmbeddings(textsNeedingEmbeddings);
       
       // Verify we got all embeddings
-      if (embeddings.length !== docs.length) {
-        throw new Error(`Embedding count mismatch: got ${embeddings.length}, expected ${docs.length}`);
+      if (newEmbeddings.length !== textsNeedingEmbeddings.length) {
+        throw new Error(`Embedding count mismatch: got ${newEmbeddings.length}, expected ${textsNeedingEmbeddings.length}`);
       }
       
-      // Cache the embeddings with model info
-      try {
-        const cacheData = {
-          docs: docs,
-          embeddings: embeddings,
-          model: 'text-embedding-3-small',
-          dimensions: embeddings[0]?.length,
-          timestamp: new Date().toISOString()
-        };
-        
-        fs.writeFileSync(embedCachePath, JSON.stringify(cacheData));
-        console.log(`Cached ${embeddings.length} embeddings to disk (${cacheData.dimensions} dimensions)`);
-      } catch (error) {
-        console.log('Failed to cache embeddings:', error.message);
+      // Insert new embeddings into the correct positions
+      for (let i = 0; i < indicesNeedingEmbeddings.length; i++) {
+        const index = indicesNeedingEmbeddings[i];
+        embeddings[index] = newEmbeddings[i];
       }
+      
+      console.log(`Generated ${newEmbeddings.length} new embeddings`);
+      
+      // Write updated CSV back to file
+      console.log('Updating CSV file with new embeddings...');
+      
+      let csvContent = 'id,text,embedding\n';
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        const embedding = embeddings[i];
+        csvContent += formatCSVRow(doc.id, doc.text, embedding) + '\n';
+      }
+      
+      // Write to file
+      fs.writeFileSync(csvPath, csvContent);
+      console.log(`✅ Updated ${csvPath} with new embeddings`);
+      
     } catch (error) {
-      console.error('Failed to generate embeddings:', error);
+      console.error('Failed to generate missing embeddings:', error);
       throw new Error(`Embedding generation failed: ${error.message}`);
     }
+  } else {
+    console.log('✅ All documents already have embeddings');
+  }
+  
+  // Verify all embeddings are present
+  const finalEmbeddings = embeddings.filter(e => e !== null);
+  if (finalEmbeddings.length !== docs.length) {
+    throw new Error(`Missing embeddings: have ${finalEmbeddings.length}, need ${docs.length}`);
   }
   
   // Create search function
@@ -125,7 +214,7 @@ export async function loadLibraryEmbeddings(csvPath) {
         }
         
         // Compute similarities
-        const similarities = embeddings.map((docEmbedding, index) => ({
+        const similarities = finalEmbeddings.map((docEmbedding, index) => ({
           index,
           similarity: cosineSimilarity(queryEmbedding, docEmbedding)
         }));
@@ -154,20 +243,88 @@ export async function loadLibraryEmbeddings(csvPath) {
     search, 
     docs: docs.length,
     model: 'text-embedding-3-small',
-    dimensions: embeddings[0]?.length
+    dimensions: finalEmbeddings[0]?.length
   };
 }
 
-// Utility function to regenerate embeddings for the entire library
-export async function regenerateAllEmbeddings(csvPath) {
-  const embedCachePath = csvPath.replace('.csv', '_embeddings.json');
+// Utility function to migrate from old 2-column format to new 3-column format
+export async function migrateToNewFormat(oldCsvPath, embeddingsJsonPath, newCsvPath) {
+  console.log('Migrating to new 3-column format...');
   
-  // Remove existing cache to force regeneration
-  if (fs.existsSync(embedCachePath)) {
-    fs.unlinkSync(embedCachePath);
-    console.log('Removed existing embedding cache');
+  // Load old CSV
+  const csvData = fs.readFileSync(oldCsvPath, 'utf8');
+  const lines = csvData.split(/\r?\n/).filter(Boolean);
+  const header = lines.shift();
+  
+  const docs = [];
+  for (const line of lines) {
+    const [id, text] = line.split(/,(.*)/s).slice(0, 2);
+    if (!text) continue;
+    docs.push({ 
+      id: id || String(docs.length + 1), 
+      text: text.trim() 
+    });
   }
   
-  // Regenerate
+  // Load embeddings if available
+  let embeddings = null;
+  if (fs.existsSync(embeddingsJsonPath)) {
+    try {
+      const embeddingData = JSON.parse(fs.readFileSync(embeddingsJsonPath, 'utf8'));
+      embeddings = embeddingData.embeddings;
+    } catch (error) {
+      console.log('Failed to load embeddings:', error.message);
+    }
+  }
+  
+  // Create new CSV content
+  let csvContent = 'id,text,embedding\n';
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i];
+    const embedding = embeddings && embeddings[i] ? embeddings[i] : null;
+    csvContent += formatCSVRow(doc.id, doc.text, embedding) + '\n';
+  }
+  
+  // Write new file
+  fs.writeFileSync(newCsvPath, csvContent);
+  console.log(`✅ Migrated data to ${newCsvPath}`);
+  
+  return newCsvPath;
+}
+
+// Utility function to add new texts to the library
+export async function addTextsToLibrary(csvPath, newTexts) {
+  console.log(`Adding ${newTexts.length} new texts to library...`);
+  
+  // Read existing data
+  const buf = fs.readFileSync(csvPath, 'utf8');
+  const lines = buf.split(/\r?\n/).filter(Boolean);
+  const header = lines.shift();
+  
+  // Find the highest existing ID
+  let maxId = 0;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const [id] = parseCSVRow(line);
+    const numId = parseInt(id, 10);
+    if (!isNaN(numId) && numId > maxId) {
+      maxId = numId;
+    }
+  }
+  
+  // Add new texts with empty embeddings
+  let csvContent = buf.endsWith('\n') ? buf : buf + '\n';
+  
+  for (let i = 0; i < newTexts.length; i++) {
+    const newId = String(maxId + i + 1).padStart(8, '0');
+    const newText = newTexts[i];
+    csvContent += formatCSVRow(newId, newText, null) + '\n';
+  }
+  
+  // Write updated file
+  fs.writeFileSync(csvPath, csvContent);
+  console.log(`✅ Added ${newTexts.length} new texts to ${csvPath}`);
+  
+  // Now load and generate embeddings for the new texts
   return await loadLibraryEmbeddings(csvPath);
 }
