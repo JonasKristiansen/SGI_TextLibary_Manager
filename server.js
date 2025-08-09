@@ -75,6 +75,20 @@ app.post('/api/similar', async (req, res) => {
   }
 });
 
+app.get('/api/stats', async (req, res) => {
+  try {
+    if (!dbClient) {
+      return res.status(503).json({ error: 'Database not ready yet. Please wait a moment and try again.' });
+    }
+    
+    const stats = await dbClient.getStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ error: 'Failed to get stats: ' + error.message });
+  }
+});
+
 app.use('/', express.static(path.join(__dirname, 'static')));
 
 const port = process.env.PORT || 3000;
