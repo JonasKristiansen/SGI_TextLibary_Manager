@@ -190,8 +190,8 @@ class DatabaseClient {
       
       // Use the existing batch embedding generation with proper rate limiting
       const embeddings = await generateBatchEmbeddings(textsToProcess, {
-        batchSize: 10,        // Very conservative batch size to avoid rate limits
-        delayMs: 5000,        // 5 seconds between batches  
+        batchSize: 100,        // Very conservative batch size to avoid rate limits
+        delayMs: 3000,        // 5 seconds between batches  
         maxRetries: 5,        // Retry failed batches
         initialWaitMs: 10000  // Wait 10 seconds before starting to let any rate limits reset
       });
