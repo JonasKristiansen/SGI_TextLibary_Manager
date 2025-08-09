@@ -188,12 +188,12 @@ class DatabaseClient {
       const textsToProcess = result.rows.map(row => row.text);
       const idsToProcess = result.rows.map(row => row.id);
       
-      // Use the existing batch embedding generation with proper rate limiting
+      // Use smaller batches to avoid memory issues and timeouts
       const embeddings = await generateBatchEmbeddings(textsToProcess, {
-        batchSize: 100,        // Very conservative batch size to avoid rate limits
-        delayMs: 3000,        // 5 seconds between batches  
-        maxRetries: 5,        // Retry failed batches
-        initialWaitMs: 10000  // Wait 10 seconds before starting to let any rate limits reset
+        batchSize: 20,         // Much smaller batch size to prevent server overload
+        delayMs: 5000,         // 5 seconds between batches  
+        maxRetries: 3,         // Fewer retries to avoid long hangs
+        initialWaitMs: 5000    // Shorter initial wait
       });
       
       // Update database with generated embeddings
