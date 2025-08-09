@@ -3,6 +3,14 @@ node_modules/
 .env
 .DS_Store
 *.log
+
+# Data files
+library.csv
+library_embeddings.json
+
+# Build artifacts
+ui/dist/
+
 # Python leftovers
 .venv/
 __pycache__/

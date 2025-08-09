@@ -1,38 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { pipeline } from '@xenova/transformers';
-
-// Global embedding pipeline instance
-let embedder = null;
-
-// Initialize the embedding model (loads once, reused for all operations)
-async function initEmbedder() {
-  if (!embedder) {
-    console.log('Loading embedding model (this may take a moment on first run)...');
-    try {
-      // Using all-mpnet-base-v2 - better semantic understanding than MiniLM
-      embedder = await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2', {
-        progress_callback: (progress) => {
-          if (progress.status === 'downloading') {
-            console.log(`Downloading model: ${Math.round(progress.progress || 0)}%`);
-          }
-        }
-      });
-      console.log('Embedding model loaded successfully');
-    } catch (error) {
-      console.error('Failed to load embedding model:', error.message);
-      throw error;
-    }
-  }
-  return embedder;
-}
-
-// Compute embedding for a single text
-async function embedText(text) {
-  const model = await initEmbedder();
-  const output = await model(text, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
-}
+import { generateEmbedding, generateBatchEmbeddings } from './aicoreEmbeddingClient.js';
 
 // Compute cosine similarity between two vectors
 function cosineSimilarity(vecA, vecB) {
@@ -53,7 +21,7 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Load library CSV and create embeddings index
+// Load library CSV and create embeddings index using AI Core
 export async function loadLibraryEmbeddings(csvPath) {
   const embedCachePath = csvPath.replace('.csv', '_embeddings.json');
   
@@ -61,8 +29,6 @@ export async function loadLibraryEmbeddings(csvPath) {
   const buf = fs.readFileSync(csvPath, 'utf8');
   const lines = buf.split(/\r?\n/).filter(Boolean);
   const header = lines.shift();
-  const idxId = header.split(',').indexOf('id');
-  const idxText = header.split(',').indexOf('text');
   
   const docs = [];
   for (const line of lines) {
@@ -84,14 +50,20 @@ export async function loadLibraryEmbeddings(csvPath) {
     try {
       const cached = JSON.parse(fs.readFileSync(embedCachePath, 'utf8'));
       if (cached.docs && cached.embeddings && cached.docs.length === docs.length) {
-        // Quick check if docs are the same (compare first few)
+        // Check if docs are the same and model version matches
         const sameData = docs.slice(0, 5).every((doc, i) => 
           cached.docs[i] && cached.docs[i].id === doc.id && cached.docs[i].text === doc.text
         );
-        if (sameData) {
+        
+        // Check model version (text-embedding-3-small)
+        const correctModel = cached.model === 'text-embedding-3-small';
+        
+        if (sameData && correctModel) {
           embeddings = cached.embeddings;
           needsRecompute = false;
-          console.log('Loaded cached embeddings');
+          console.log('Loaded cached AI Core embeddings');
+        } else if (!correctModel) {
+          console.log('Cached embeddings use different model, will recompute');
         }
       }
     } catch (error) {
@@ -99,39 +71,42 @@ export async function loadLibraryEmbeddings(csvPath) {
     }
   }
   
-  // Compute embeddings if needed
+  // Compute embeddings if needed using AI Core
   if (needsRecompute) {
-    console.log('Computing embeddings for all documents...');
-    embeddings = [];
+    console.log('Computing embeddings using SAP AI Core...');
+    console.log('This may take a few minutes for large libraries.');
     
-    // Initialize the model once before processing
-    const model = await initEmbedder();
-    
-    // Process in smaller batches sequentially to avoid overwhelming the network
-    const batchSize = 10;
-    for (let i = 0; i < docs.length; i += batchSize) {
-      const batch = docs.slice(i, i + batchSize);
+    try {
+      // Extract all texts for batch processing
+      const texts = docs.map(doc => doc.text);
       
-      // Process batch sequentially to avoid network issues
-      for (const doc of batch) {
-        const output = await model(doc.text, { pooling: 'mean', normalize: true });
-        embeddings.push(Array.from(output.data));
+      // Generate embeddings in batches
+      // Using defaults from aicoreEmbeddingClient.js for proper rate limiting
+      embeddings = await generateBatchEmbeddings(texts);
+      
+      // Verify we got all embeddings
+      if (embeddings.length !== docs.length) {
+        throw new Error(`Embedding count mismatch: got ${embeddings.length}, expected ${docs.length}`);
       }
       
-      const progress = Math.min(i + batchSize, docs.length);
-      console.log(`Computed embeddings: ${progress}/${docs.length}`);
-    }
-    
-    // Cache the embeddings
-    try {
-      fs.writeFileSync(embedCachePath, JSON.stringify({
-        docs: docs,
-        embeddings: embeddings,
-        timestamp: new Date().toISOString()
-      }));
-      console.log('Cached embeddings to disk');
+      // Cache the embeddings with model info
+      try {
+        const cacheData = {
+          docs: docs,
+          embeddings: embeddings,
+          model: 'text-embedding-3-small',
+          dimensions: embeddings[0]?.length,
+          timestamp: new Date().toISOString()
+        };
+        
+        fs.writeFileSync(embedCachePath, JSON.stringify(cacheData));
+        console.log(`Cached ${embeddings.length} embeddings to disk (${cacheData.dimensions} dimensions)`);
+      } catch (error) {
+        console.log('Failed to cache embeddings:', error.message);
+      }
     } catch (error) {
-      console.log('Failed to cache embeddings:', error.message);
+      console.error('Failed to generate embeddings:', error);
+      throw new Error(`Embedding generation failed: ${error.message}`);
     }
   }
   
@@ -139,8 +114,15 @@ export async function loadLibraryEmbeddings(csvPath) {
   function search(query, limit = 25) {
     return new Promise(async (resolve, reject) => {
       try {
-        // Get query embedding
-        const queryEmbedding = await embedText(query);
+        console.log(`Searching for: "${query.substring(0, 50)}..."`);
+        
+        // Get query embedding from AI Core
+        const queryEmbedding = await generateEmbedding(query);
+        
+        // Validate embedding
+        if (!queryEmbedding || !Array.isArray(queryEmbedding)) {
+          throw new Error('Failed to generate query embedding');
+        }
         
         // Compute similarities
         const similarities = embeddings.map((docEmbedding, index) => ({
@@ -159,12 +141,33 @@ export async function loadLibraryEmbeddings(csvPath) {
           score: Number(similarity.toFixed(4))
         }));
         
+        console.log(`Found ${results.length} results, top score: ${results[0]?.score || 0}`);
         resolve(results);
       } catch (error) {
+        console.error('Search error:', error);
         reject(error);
       }
     });
   }
   
-  return { search, docs: docs.length };
+  return { 
+    search, 
+    docs: docs.length,
+    model: 'text-embedding-3-small',
+    dimensions: embeddings[0]?.length
+  };
+}
+
+// Utility function to regenerate embeddings for the entire library
+export async function regenerateAllEmbeddings(csvPath) {
+  const embedCachePath = csvPath.replace('.csv', '_embeddings.json');
+  
+  // Remove existing cache to force regeneration
+  if (fs.existsSync(embedCachePath)) {
+    fs.unlinkSync(embedCachePath);
+    console.log('Removed existing embedding cache');
+  }
+  
+  // Regenerate
+  return await loadLibraryEmbeddings(csvPath);
 }

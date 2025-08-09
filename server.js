@@ -18,13 +18,14 @@ app.use(express.json());
 
 // Initialize the embedding index (async)
 let index = null;
-console.log('Initializing embedding index...');
+console.log('Initializing AI Core embedding index...');
 loadLibraryEmbeddings(path.join(__dirname, 'library.csv')).then(embeddingIndex => {
   index = embeddingIndex;
-  console.log(`Embedding index ready with ${embeddingIndex.docs} documents`);
+  console.log(`AI Core embedding index ready with ${embeddingIndex.docs} documents`);
+  console.log(`Using model: ${embeddingIndex.model} (${embeddingIndex.dimensions} dimensions)`);
 }).catch(error => {
   console.error('Failed to initialize embedding index:', error);
-  process.exit(1);
+  console.warn('Server will continue running without embedding functionality. Please check your AI Core configuration.');
 });
 
 app.post('/api/chat', async (req, res) => {

@@ -47,19 +47,22 @@ export async function callModel(message) {
     return data;
   }
 
-  // Fallback candidates
+  // Fallback candidates - prioritize /invoke for Anthropic models
   const dep = cfg.deploymentId;
   const paths = [
+    `/v2/inference/deployments/${dep}/invoke`,        // Try invoke first (works for Anthropic)
     `/v2/inference/deployments/${dep}/chat/completions`,
     `/v2/inference/deployments/${dep}/completions`,
     `/v2/inference/deployments/${dep}/v1/messages`,
     `/v2/inference/deployments/${dep}/messages`,
-    `/v2/inference/deployments/${dep}/invoke`,
     `/v2/inference/deployments/${dep}`,
   ];
   const bodies = cfg.modelFormat === 'anthropic'
     ? [{ anthropic_version: 'bedrock-2023-05-31', max_tokens: 2048, messages: [{ role: 'user', content: message }] }]
     : [
+        // Try Anthropic format first (since /invoke endpoint works)
+        { anthropic_version: 'bedrock-2023-05-31', max_tokens: 2048, messages: [{ role: 'user', content: message }] },
+        // Then try OpenAI formats
         { messages: [{ role: 'user', content: message }], temperature: 0.2 },
         { input: [{ role: 'user', content: [{ type: 'text', text: message }] }], temperature: 0.2 },
       ];
