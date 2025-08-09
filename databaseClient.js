@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { generateEmbedding } from './aicoreEmbeddingClient.js';
+import { generateEmbedding, generateBatchEmbeddings } from './aicoreEmbeddingClient.js';
 
 const { Pool } = pg;
 
@@ -184,34 +184,43 @@ class DatabaseClient {
 
       console.log(`Generating embeddings for ${result.rows.length} texts...`);
       
-      // Process in batches to avoid overwhelming the API
-      const batchSize = 50;
-      for (let i = 0; i < result.rows.length; i += batchSize) {
-        const batch = result.rows.slice(i, i + batchSize);
-        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(result.rows.length/batchSize)}`);
+      // Extract texts and IDs for batch processing
+      const textsToProcess = result.rows.map(row => row.text);
+      const idsToProcess = result.rows.map(row => row.id);
+      
+      // Use the existing batch embedding generation with proper rate limiting
+      const embeddings = await generateBatchEmbeddings(textsToProcess, {
+        batchSize: 10,        // Very conservative batch size to avoid rate limits
+        delayMs: 5000,        // 5 seconds between batches  
+        maxRetries: 5,        // Retry failed batches
+        initialWaitMs: 10000  // Wait 10 seconds before starting to let any rate limits reset
+      });
+      
+      // Update database with generated embeddings
+      console.log('📝 Updating database with generated embeddings...');
+      await client.query('BEGIN');
+      
+      for (let i = 0; i < embeddings.length; i++) {
+        const embedding = embeddings[i];
+        const textId = idsToProcess[i];
         
-        for (const row of batch) {
-          try {
-            const embedding = await generateEmbedding(row.text);
-            if (embedding && Array.isArray(embedding)) {
-              await client.query(`
-                UPDATE text_library 
-                SET embedding = $1::vector, updated_at = NOW() 
-                WHERE id = $2
-              `, [JSON.stringify(embedding), row.id]);
-            }
-          } catch (error) {
-            console.warn(`Failed to generate embedding for text ID ${row.id}:`, error.message);
-          }
+        if (embedding && Array.isArray(embedding)) {
+          await client.query(`
+            UPDATE text_library 
+            SET embedding = $1::vector, updated_at = NOW() 
+            WHERE id = $2
+          `, [JSON.stringify(embedding), textId]);
+        } else {
+          console.warn(`Invalid embedding generated for text ID ${textId}`);
         }
-        
-        // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
+      await client.query('COMMIT');
+      console.log('✅ Successfully updated all embeddings in database');
       console.log('✅ Finished generating embeddings');
       
     } catch (error) {
+      await client.query('ROLLBACK');
       console.error('Failed to generate embeddings:', error);
       throw error;
     } finally {

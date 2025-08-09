@@ -103,10 +103,10 @@ export async function generateEmbedding(textOrTexts) {
 
 export async function generateBatchEmbeddings(texts, options = {}) {
   const { 
-    batchSize = 100,   // Process 100 texts in a single API call!
-    delayMs = 1000,   // 10 second delay between API calls
+    batchSize = 20,   // Conservative batch size to avoid rate limits
+    delayMs = 3000,   // 3 second delay between API calls
     maxRetries = 5,    // More retries
-    initialWaitMs = 10000  // Wait 60 seconds before starting to let rate limits fully reset
+    initialWaitMs = 5000  // Wait 5 seconds before starting to let rate limits reset
   } = options;
   
   // Initial wait to let any previous rate limits clear
